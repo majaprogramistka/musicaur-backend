@@ -29,7 +29,7 @@ except Exception as e:
 print("Ładowanie modelu AI... (to może chwilę potrwać przy pierwszym starcie)")
 emotion_classifier = pipeline(
     "zero-shot-classification",
-    model="facebook/bart-large-mnli"  # <-- NASZ NOWY, 100% PUBLICZNY MODEL
+    model="cross-encoder/nli-distilroberta-base"  # <-- NASZ NOWY, LEKKI MODEL
 )
 print("Model AI załadowany!")
 # ------------------------------------
