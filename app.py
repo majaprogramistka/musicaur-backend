@@ -4,7 +4,6 @@ import requests
 import spotipy 
 from spotipy.oauth2 import SpotifyClientCredentials 
 from flask import Flask, request, jsonify
-from transformers import pipeline
 
 load_dotenv()
 
@@ -25,14 +24,6 @@ except Exception as e:
     sp = None
 
 
-# --- Konfiguracja Modelu AI ---
-print("Ładowanie modelu AI... (to może chwilę potrwać przy pierwszym starcie)")
-emotion_classifier = pipeline(
-    "zero-shot-classification",
-    model="cross-encoder/nli-distilroberta-base"  # <-- NASZ NOWY, LEKKI MODEL
-)
-print("Model AI załadowany!")
-# ------------------------------------
 
 def get_weather(city):
     WARM_THRESHOLD = 15.0
@@ -65,16 +56,46 @@ def get_weather(city):
             print("BŁĄD KRYTYCZNY: Twój klucz API pogody jest nieprawidłowy lub jeszcze nieaktywny.")
         return 'cloudy cold'
 
+# === NASZA NOWA, LEKKA FUNKCJA AI (API) ===
+
+# Pobieramy nasz sekretny token do AI
+HF_TOKEN = os.getenv('HF_TOKEN')
+
 def classify_mood(mood_text):
+    """
+    Ta funkcja dzwoni do "Zdalnego Mózgu" (Hugging Face API),
+    aby sklasyfikować nastrój.
+    """
+    # Używamy tego samego modelu, który działał, ale teraz "zdalnie"
+    API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
     emotion_labels = ['radość', 'smutek', 'złość', 'spokój', 'strach', 'zaskoczenie', 'energia']
+
+    # Przygotowujemy "ładunek" dla API
+    payload = {
+        "inputs": mood_text,
+        "parameters": {"candidate_labels": emotion_labels},
+    }
+
     try:
-        result = emotion_classifier(mood_text, candidate_labels=emotion_labels)
+        # Wysyłamy zapytanie POST do "Zdalnego Mózgu"
+        response = requests.post(API_URL, headers=headers, json=payload)
+        response.raise_for_status() # Sprawdź, czy nie ma błędu
+
+        result = response.json()
+
+        # Zwraca on listę etykiet i wyników, bierzemy tę z najwyższym wynikiem
         best_emotion = result['labels'][0]
-        print(f"Sklasyfikowano nastrój '{mood_text}' jako: {best_emotion}")
+        print(f"Zdalny Mózg (AI) sklasyfikował '{mood_text}' jako: {best_emotion}")
         return best_emotion
-    except Exception as e:
-        print(f"Błąd przy klasyfikacji nastroju: {e}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Błąd przy łączeniu ze 'Zdalnym Mózgiem' (API AI): {e}")
+        # Jeśli API AI zawiedzie, zwróćmy domyślną emocję
         return 'radość'
+
+# ==================================================
 
 def get_spotify_playlist(query):
     """
