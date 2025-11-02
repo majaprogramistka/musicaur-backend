@@ -1,19 +1,22 @@
 import os
 from dotenv import load_dotenv
 import requests
-import spotipy 
-from spotipy.oauth2 import SpotifyClientCredentials 
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 from flask import Flask, request, jsonify
 
+# --- Załaduj sekrety z pliku .env ---
 load_dotenv()
+# ------------------------------------
 
-
+# --- Konfiguracje API (wszystkie 3) ---
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
-
-
 SPOTIPY_CLIENT_ID = os.getenv('SPOTIPY_CLIENT_ID')
 SPOTIPY_CLIENT_SECRET = os.getenv('SPOTIPY_CLIENT_SECRET')
+HF_TOKEN = os.getenv('HF_TOKEN')
+# ------------------------------------
 
+# --- Konfiguracja Spotify (bez zmian) ---
 try:
     auth_manager = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID,
                                             client_secret=SPOTIPY_CLIENT_SECRET)
@@ -22,9 +25,10 @@ try:
 except Exception as e:
     print(f"BŁĄD KRYTYCZNY: Nie można połączyć się ze Spotify. Sprawdź klucze API. Błąd: {e}")
     sp = None
+# ------------------------------------
 
 
-
+# === Funkcja do pogody (ZAKTUALIZOWANA) ===
 def get_weather(city):
     WARM_THRESHOLD = 15.0
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=pl'
@@ -37,100 +41,92 @@ def get_weather(city):
         current_temp = weather_data['main']['temp']
         print(f"Pogoda z API: {main_weather}, Temperatura: {current_temp}°C")
         
+        # Logika dopasowana do Twoich 7 kategorii z Figmy
         if main_weather == 'Clear':
-            return 'sunny warm' if current_temp >= WARM_THRESHOLD else 'sunny cold'
+            # ZMIANA: Z 'sunny warm' na 'Mega sunny Hot'
+            return 'Mega sunny Hot' if current_temp >= WARM_THRESHOLD else 'Sunny cold'
         elif main_weather == 'Clouds':
-            return 'cloudy warm' if current_temp >= WARM_THRESHOLD else 'cloudy cold'
+            return 'Cloudy warm' if current_temp >= WARM_THRESHOLD else 'Cloudy cold'
         elif main_weather in ['Rain', 'Drizzle']:
-            return 'raining'
+            return 'Raining' # Zmieniamy 'raining' na 'Raining', żeby pasowało do screena
         elif main_weather == 'Snow':
-            return 'snow'
+            return 'Snow' # Zmieniamy 'snow' na 'Snow'
         elif main_weather == 'Thunderstorm':
-            return 'storm'
+            return 'Storm' # Zmieniamy 'storm' na 'Storm'
         else:
-            return 'cloudy cold' if current_temp < WARM_THRESHOLD else 'cloudy warm'
+            return 'Cloudy cold' if current_temp < WARM_THRESHOLD else 'Cloudy warm'
 
     except requests.exceptions.RequestException as e:
         print(f"Błąd przy pobieraniu pogody: {e}")
-        if "401" in str(e):
-            print("BŁĄD KRYTYCZNY: Twój klucz API pogody jest nieprawidłowy lub jeszcze nieaktywny.")
-        return 'cloudy cold'
+        return 'Cloudy cold' # Domyślna bezpieczna kategoria
 
-# === NASZA NOWA, LEKKA FUNKCJA AI (API) ===
-
-# Pobieramy nasz sekretny token do AI
-HF_TOKEN = os.getenv('HF_TOKEN')
-
+# === Funkcja AI (API) (bez zmian) ===
 def classify_mood(mood_text):
-    """
-    Ta funkcja dzwoni do "Zdalnego Mózgu" (Hugging Face API),
-    aby sklasyfikować nastrój.
-    """
-    # Używamy tego samego modelu, który działał, ale teraz "zdalnie"
     API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-
     emotion_labels = ['radość', 'smutek', 'złość', 'spokój', 'strach', 'zaskoczenie', 'energia']
-
-    # Przygotowujemy "ładunek" dla API
-    payload = {
-        "inputs": mood_text,
-        "parameters": {"candidate_labels": emotion_labels},
-    }
+    payload = {"inputs": mood_text, "parameters": {"candidate_labels": emotion_labels}}
 
     try:
-        # Wysyłamy zapytanie POST do "Zdalnego Mózgu"
         response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status() # Sprawdź, czy nie ma błędu
-
+        response.raise_for_status()
         result = response.json()
-
-        # Zwraca on listę etykiet i wyników, bierzemy tę z najwyższym wynikiem
         best_emotion = result['labels'][0]
         print(f"Zdalny Mózg (AI) sklasyfikował '{mood_text}' jako: {best_emotion}")
         return best_emotion
-
     except requests.exceptions.RequestException as e:
         print(f"Błąd przy łączeniu ze 'Zdalnym Mózgiem' (API AI): {e}")
-        # Jeśli API AI zawiedzie, zwróćmy domyślną emocję
         return 'radość'
 
-# ==================================================
 
+# === Funkcja Spotify (ZAKTUALIZOWANA) ===
 def get_spotify_playlist(query):
-    """
-    Szuka na Spotify playlisty pasującej do naszego hasła (np. "storm złość").
-    """
+    # Zwracamy DWA linki: normalny i do podglądu (embed)
+    default_links = {
+        'url': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYEmSG',
+        'embed_url': 'http://googleusercontent.com/spotify.com/7'
+    }
+    
     if sp is None:
         print("Nie można szukać na Spotify, API nie jest połączone.")
-        return 'http://googleusercontent.com/spotify.com/5' # Zapasowy link
+        return default_links
 
     try:
         results = sp.search(q=query, type='playlist', limit=10, market='PL')
-        
         playlists = results['playlists']['items']
         
         if not playlists:
-            print(f"Nie znaleziono playlist dla hasła: {query}. Próbuję szukać dla samego nastroju: {query.split()[1]}")
-            results_mood_only = sp.search(q=query.split()[1], type='playlist', limit=1, market='PL')
+            print(f"Nie znaleziono playlist dla hasła: {query}. Próbuję szukać dla samego nastroju.")
+            mood_only = query.split()[-1] # Bierzemy ostatnie słowo (emocję)
+            results_mood_only = sp.search(q=mood_only, type='playlist', limit=1, market='PL')
             playlists = results_mood_only['playlists']['items']
             
             if not playlists:
                 print("Nie znaleziono też playlist dla samego nastroju. Zwracam domyślny link.")
-                return 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYEmSG'
+                return default_links
 
-        # Bierzemy pierwszą playlistę z wyników
+        # Mamy playlistę! Bierzemy pierwszą
         playlist_url = playlists[0]['external_urls']['spotify']
         playlist_name = playlists[0]['name']
         
+        # TWORZYMY LINK DO PODGLĄDU (EMBED)
+        # Zamieniamy: https://open.spotify.com/playlist/ID
+        # Na:         https://open.spotify.com/embed/playlist/ID
+        embed_url = playlist_url.replace("open.spotify.com/", "open.spotify.com/embed/")
+        
         print(f"Znaleziono playlistę: '{playlist_name}' -> {playlist_url}")
-        return playlist_url
+        
+        return {
+            'url': playlist_url,
+            'embed_url': embed_url
+        }
 
     except Exception as e:
         print(f"Błąd przy szukaniu playlisty: {e}")
-        return 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYEmSG'
+        return default_links
 
 
+# --- Nasz główny serwer Flask (WIELKI FINAŁ v2) ---
 app = Flask(__name__)
 
 @app.route('/generate-playlist', methods=['POST'])
@@ -141,20 +137,30 @@ def generate_playlist():
     city = data.get('city')
     mood = data.get('mood')
 
-    weather_category = get_weather(city)
+    # KROK 1: Pogoda
+    weather_category = get_weather(city) # Np. "Mega sunny Hot"
     
-    emotion_category = classify_mood(mood)
+    # KROK 2: Emocje
+    emotion_category = classify_mood(mood) # Np. "radość"
     
+    # KROK 3: Hasło do wyszukiwania
     search_query = f"{weather_category} {emotion_category}"
     print(f"Tworzę hasło do Spotify: '{search_query}'")
     
-    playlist_link = get_spotify_playlist(search_query)
+    # KROK 4: Playlista
+    playlist_data = get_spotify_playlist(search_query) # Zwraca {'url': '...', 'embed_url': '...'}
     
+    # KROK 5: Zbuduj ostateczną odpowiedź dla Framera
     response_data = {
-        'playlist_url': playlist_link
+        'playlist_url': playlist_data['url'],
+        'embed_url': playlist_data['embed_url'],
+        'weather_category': weather_category  # <-- WYSYŁAMY KATEGORIĘ DO UI!
     }
     
+    print(f"Wysyłam do Framera: {response_data}")
     return jsonify(response_data)
 
+
+# --- Uruchomienie serwera ---
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
