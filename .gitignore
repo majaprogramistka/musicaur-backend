@@ -1,0 +1,17 @@
+# Sekrety - NIGDY nie wrzucaj tego pliku do chmury!
+.env
+
+# Pudełko z narzędziami - niepotrzebne na serwerze, Render zbuduje własne
+.venv/
+
+# Pliki systemowe Maca
+.DS_Store
+
+.cache/
+
+# Ustawienia Twojego edytora (na wszelki wypadek)
+.vscode/
+
+# Pliki tymczasowe Pythona
+__pycache__/
+*.pyc
