@@ -6,38 +6,37 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from urllib.parse import urlparse
 
-# === Ładowanie sekretów z .env ===
+# === Load env variables ===
 load_dotenv()
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 SPOTIPY_CLIENT_ID = os.getenv('SPOTIPY_CLIENT_ID')
 SPOTIPY_CLIENT_SECRET = os.getenv('SPOTIPY_CLIENT_SECRET')
 
-# --- Konfiguracja Spotify ---
+# === Spotify setup ===
 try:
     auth_manager = SpotifyClientCredentials(
         client_id=SPOTIPY_CLIENT_ID,
         client_secret=SPOTIPY_CLIENT_SECRET
     )
     sp = spotipy.Spotify(auth_manager=auth_manager)
-    print("✅ Połączono z API Spotify!")
+    print("✅ Connected to Spotify API!")
 except Exception as e:
-    print(f"⚠️ BŁĄD: Nie można połączyć się ze Spotify: {e}")
+    print(f"⚠️ Spotify connection error: {e}")
     sp = None
 
 # === Flask app ===
 app = Flask(__name__)
 CORS(app)
 
-# === Pogoda ===
+# === Weather ===
 def get_weather(city):
     WARM_THRESHOLD = 15.0
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=pl'
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()
         main_weather = data['weather'][0]['main']
         temp = data['main']['temp']
 
@@ -52,116 +51,77 @@ def get_weather(city):
         elif main_weather == 'Thunderstorm':
             return 'Storm'
         else:
-            return 'Cloudy cold' if temp < WARM_THRESHOLD else 'Cloudy warm'
-
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Błąd przy pobieraniu pogody: {e}")
+            return 'Cloudy warm' if temp >= WARM_THRESHOLD else 'Cloudy cold'
+    except:
         return 'Cloudy cold'
 
-# === Klasyfikacja nastroju ===
+# === Mood classification ===
 emotion_keywords = {
-    'radość': [
-        "szczęśliw", "radoś", "zadowol", "uśmiech", "super", "ekstra", "fajnie", "dobry humor", "wesoł", "pozytyw", "entuzj", "szczęście",
-        "happy", "joy", "glad", "smile", "cheerful", "excited", "great", "awesome", "fantastic", "joyful", "elated"
-    ],
-    'smutek': [
-        "smutn", "przygnęb", "zdołowan", "depresyj", "płacz", "nieszczęśliw", "przykro", "załam", "żal", "tęskn", "cierpi", "smutek",
-        "sad", "unhappy", "depressed", "cry", "miserable", "down", "gloomy", "melancholy", "heartbroken"
-    ],
-    'złość': [
-        "zły", "wkurz", "zdenerw", "wściek", "agresywn", "frustrac", "gniew", "irytac", "niezadowol", "furia",
-        "angry", "mad", "furious", "annoyed", "irritated", "frustrated", "rage", "resentful"
-    ],
-    'strach': [
-        "boję", "strach", "przeraż", "lęk", "niepew", "panik", "obaw", "strasz", "nerw", "stres",
-        "afraid", "scared", "terrified", "fear", "panic", "nervous", "anxious", "worried", "frightened"
-    ],
-    'zaskoczenie': [
-        "zaskocz", "wow", "niespodzi", "szok", "zdum", "ogłup", "zadziw",
-        "surprised", "astonished", "amazed", "shocked", "wow", "unexpected", "stunned"
-    ],
-    'spokój': [
-        "spokoj", "wyluz", "zrelaks", "harmon", "luźn", "cisz", "relaks", "pokój", "wycisz",
-        "calm", "relaxed", "peaceful", "chill", "serene", "balanced", "tranquil"
-    ],
-    'energia': [
-        "pełen energ", "motywac", "podekscytow", "aktywn", "żywioł", "energicz", "radosn", "żywy", "szybki",
-        "energetic", "motivated", "hyped", "active", "driven", "powerful", "lively", "excited"
-    ]
+    'radość': ["szczęśliw","radoś","zadowol","uśmiech","super","fajnie","happy","joy","smile","cheerful","awesome"],
+    'smutek': ["smutn","przygnęb","płacz","sad","unhappy","depressed","cry"],
+    'złość': ["zły","wkurz","wściek","angry","mad","furious"],
+    'strach': ["boję","strach","lęk","afraid","scared","fear"],
+    'zaskoczenie': ["zaskocz","wow","niespodzi","surprised","amazed","shocked"],
+    'spokój': ["spokoj","wyluz","calm","relaxed","peaceful"],
+    'energia': ["pełen energ","motywac","aktywn","energetic","active","powerful"]
 }
 
-def classify_mood(mood_text):
-    text = mood_text.lower().strip()
+def classify_mood(text):
+    text = text.lower().strip()
     for emotion, keywords in emotion_keywords.items():
         if any(word in text for word in keywords):
             return emotion
     return "spokój"
 
-# === Spotify ===
+# === Spotify playlist fetch ===
 def get_spotify_playlist(query):
-    default_links = {
+    default = {
         'url': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYEmSG',
         'embed_url': 'https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYEmSG'
     }
 
     if sp is None:
-        print("⚠️ Spotify API niepołączone, zwracam domyślną playlistę.")
-        return default_links
+        return default
 
     try:
-        results = sp.search(q=query, type='playlist', limit=5, market='PL')
+        results = sp.search(q=query, type='playlist', limit=10, market='PL')
         playlists = results.get('playlists', {}).get('items', [])
 
         if not playlists:
+            # Spróbuj użyć tylko nastroju
             mood_only = query.split()[-1]
             results_mood_only = sp.search(q=mood_only, type='playlist', limit=5, market='PL')
             playlists = results_mood_only.get('playlists', {}).get('items', [])
 
         if not playlists:
-            print(f"❌ Nie znaleziono playlist dla query: '{query}', używam domyślnej.")
-            return default_links
+            return default
 
-        selected = random.choice(playlists)
-        playlist_url = selected['external_urls']['spotify']
-        playlist_name = selected['name']
-        print(f"🎵 Wybrano playlistę: '{playlist_name}' → {playlist_url}")
-
-        parsed = urlparse(playlist_url)
-        path_parts = parsed.path.split('/')
-        if len(path_parts) >= 3:
-            embed_url = f"https://open.spotify.com/embed/{path_parts[1]}/{path_parts[2]}"
-        else:
-            embed_url = playlist_url
-
-        return {'url': playlist_url, 'embed_url': embed_url}
+        chosen = random.choice(playlists)
+        url = chosen['external_urls']['spotify']
+        embed_url = url.replace("open.spotify.com/", "open.spotify.com/embed/")
+        return {'url': url, 'embed_url': embed_url}
 
     except Exception as e:
-        print(f"❌ Błąd przy szukaniu playlisty: {e}")
-        return default_links
+        print(f"❌ Spotify fetch error: {e}")
+        return default
 
-# === Endpoint Flask ===
+# === Flask endpoint ===
 @app.route('/generate-playlist', methods=['POST'])
 def generate_playlist():
     data = request.json
-    city = data.get('city')
-    mood = data.get('mood')
+    city = data.get('city', '')
+    mood = data.get('mood', '')
 
-    weather_category = get_weather(city)
-    emotion_category = classify_mood(mood)
-    
-    search_query = f"{weather_category} {emotion_category}"
-    print(f"🔍 Query Spotify: {search_query}")
+    weather_cat = get_weather(city)
+    emotion_cat = classify_mood(mood)
+    search_query = f"{weather_cat} {emotion_cat}"
 
     playlist_data = get_spotify_playlist(search_query)
-    
-    response_data = {
+
+    return jsonify({
         'playlist_url': playlist_data['url'],
-        'embed_url': playlist_data['embed_url'],
-        'weather_category': weather_category,
-        'emotion_category': emotion_category
-    }
-    
-    return jsonify(response_data)
+        'embed_url': playlist_data['embed_url']
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
