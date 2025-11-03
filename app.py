@@ -60,9 +60,11 @@ def get_weather(city):
         print(f"Błąd przy pobieraniu pogody: {e}")
         return 'Cloudy cold' # Domyślna bezpieczna kategoria
 
-# === Funkcja AI (API) (bez zmian) ===
 def classify_mood(mood_text):
-    API_URL = "https://router.huggingface.co/hf-inference/."
+    # NOWY URL Z MAILA Z DOKŁŁADNĄ NAZWĄ MODELU
+    API_URL = "https://router.huggingface.co/hf-inference/models/Kamilgajewski/multilingual-e6-polish-zero-shot-classification"
+    
+    # ... (reszta kluczy, bez zmian)
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     emotion_labels = ['radość', 'smutek', 'złość', 'spokój', 'strach', 'zaskoczenie', 'energia']
     payload = {"inputs": mood_text, "parameters": {"candidate_labels": emotion_labels}}
@@ -71,13 +73,18 @@ def classify_mood(mood_text):
         response = requests.post(API_URL, headers=headers, json=payload)
         response.raise_for_status()
         result = response.json()
+        
+        # BARDZO WAŻNE: Sprawdzamy, czy wynik jest listą (nowy router może zwracać listę)
+        if isinstance(result, list):
+            result = result[0] # Bierzemy pierwszy element z listy
+            
         best_emotion = result['labels'][0]
         print(f"Zdalny Mózg (AI) sklasyfikował '{mood_text}' jako: {best_emotion}")
         return best_emotion
+
     except requests.exceptions.RequestException as e:
         print(f"Błąd przy łączeniu ze 'Zdalnym Mózgiem' (API AI): {e}")
         return 'radość'
-
 
 # === Funkcja Spotify (ZAKTUALIZOWANA) ===
 def get_spotify_playlist(query):
