@@ -1,4 +1,5 @@
 import os
+import random
 from dotenv import load_dotenv
 import requests
 import spotipy
@@ -33,18 +34,17 @@ CORS(app)
 def get_weather(city):
     WARM_THRESHOLD = 15.0
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=pl'
-    
     try:
         response = requests.get(url)
         response.raise_for_status()
-        weather_data = response.json()
-        main_weather = weather_data['weather'][0]['main']
-        current_temp = weather_data['main']['temp']
+        data = response.json()
+        main_weather = data['weather'][0]['main']
+        temp = data['main']['temp']
 
         if main_weather == 'Clear':
-            return 'Mega sunny Hot' if current_temp >= WARM_THRESHOLD else 'Sunny cold'
+            return 'Mega sunny Hot' if temp >= WARM_THRESHOLD else 'Sunny cold'
         elif main_weather == 'Clouds':
-            return 'Cloudy warm' if current_temp >= WARM_THRESHOLD else 'Cloudy cold'
+            return 'Cloudy warm' if temp >= WARM_THRESHOLD else 'Cloudy cold'
         elif main_weather in ['Rain', 'Drizzle']:
             return 'Raining'
         elif main_weather == 'Snow':
@@ -52,7 +52,7 @@ def get_weather(city):
         elif main_weather == 'Thunderstorm':
             return 'Storm'
         else:
-            return 'Cloudy cold' if current_temp < WARM_THRESHOLD else 'Cloudy warm'
+            return 'Cloudy cold' if temp < WARM_THRESHOLD else 'Cloudy warm'
 
     except requests.exceptions.RequestException as e:
         print(f"❌ Błąd przy pobieraniu pogody: {e}")
@@ -105,30 +105,33 @@ def get_spotify_playlist(query):
     }
 
     if sp is None:
+        print("⚠️ Spotify API niepołączone, zwracam domyślną playlistę.")
         return default_links
 
     try:
-        results = sp.search(q=query, type='playlist', limit=10, market='PL')
+        results = sp.search(q=query, type='playlist', limit=5, market='PL')
         playlists = results.get('playlists', {}).get('items', [])
 
         if not playlists:
-            # fallback: tylko nastrój
             mood_only = query.split()[-1]
             results_mood_only = sp.search(q=mood_only, type='playlist', limit=5, market='PL')
             playlists = results_mood_only.get('playlists', {}).get('items', [])
 
-            if not playlists:
-                return default_links
+        if not playlists:
+            print(f"❌ Nie znaleziono playlist dla query: '{query}', używam domyślnej.")
+            return default_links
 
-        playlist_url = playlists[0]['external_urls']['spotify']
+        selected = random.choice(playlists)
+        playlist_url = selected['external_urls']['spotify']
+        playlist_name = selected['name']
+        print(f"🎵 Wybrano playlistę: '{playlist_name}' → {playlist_url}")
 
-        # poprawny embed URL
         parsed = urlparse(playlist_url)
         path_parts = parsed.path.split('/')
         if len(path_parts) >= 3:
             embed_url = f"https://open.spotify.com/embed/{path_parts[1]}/{path_parts[2]}"
         else:
-            embed_url = playlist_url  # fallback
+            embed_url = playlist_url
 
         return {'url': playlist_url, 'embed_url': embed_url}
 
@@ -147,7 +150,7 @@ def generate_playlist():
     emotion_category = classify_mood(mood)
     
     search_query = f"{weather_category} {emotion_category}"
-    print(f"🔍 Query Spotify: {search_query}")  # logowanie dla debug
+    print(f"🔍 Query Spotify: {search_query}")
 
     playlist_data = get_spotify_playlist(search_query)
     
