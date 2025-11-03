@@ -62,7 +62,7 @@ def get_weather(city):
 
 # === Funkcja AI (API) (bez zmian) ===
 def classify_mood(mood_text):
-    API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+    API_URL = "https://router.huggingface.co/hf-inference/."
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     emotion_labels = ['radość', 'smutek', 'złość', 'spokój', 'strach', 'zaskoczenie', 'energia']
     payload = {"inputs": mood_text, "parameters": {"candidate_labels": emotion_labels}}
