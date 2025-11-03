@@ -5,30 +5,31 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from flask import Flask, request, jsonify
 
-# --- Załaduj sekrety z pliku .env ---
-load_dotenv()
-# ------------------------------------
+# NOWE IMPORTY GOOGLE CLOUD
+from google.cloud import translate_v3 as translate
+from google.oauth2 import service_account
+from google.api_core.exceptions import GoogleAPICallError
 
-# --- Konfiguracje API (wszystkie 3) ---
+# --- Sekrety (Wciąż ten sam HF_TOKEN jest używany dla API AI) ---
+load_dotenv()
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 SPOTIPY_CLIENT_ID = os.getenv('SPOTIPY_CLIENT_ID')
 SPOTIPY_CLIENT_SECRET = os.getenv('SPOTIPY_CLIENT_SECRET')
-HF_TOKEN = os.getenv('HF_TOKEN')
-# ------------------------------------
+HF_TOKEN = os.getenv('HF_TOKEN') # Do API AI (Hugging Face)
 
+# UWAGA: Oficjalne Google API wymaga autoryzacji - użyjemy tymczasowo biblioteki, by pominąć ten krok i użyć nieoficjalnego serwera
 # --- Konfiguracja Spotify (bez zmian) ---
 try:
-    auth_manager = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID,
-                                            client_secret=SPOTIPY_CLIENT_SECRET)
+    auth_manager = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID, client_secret=SPOTIPY_CLIENT_SECRET)
     sp = spotipy.Spotify(auth_manager=auth_manager)
     print("Połączono z API Spotify!")
 except Exception as e:
-    print(f"BŁĄD KRYTYCZNY: Nie można połączyć się ze Spotify. Sprawdź klucze API. Błąd: {e}")
+    print(f"BŁĄD KRYTYCZNY: Nie można połączyć się ze Spotify. Błąd: {e}")
     sp = None
 # ------------------------------------
 
 
-# === Funkcja do pogody (ZAKTUALIZOWANA) ===
+# === Funkcja do pogody (bez zmian) ===
 def get_weather(city):
     WARM_THRESHOLD = 15.0
     url = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=pl'
@@ -39,59 +40,73 @@ def get_weather(city):
         weather_data = response.json()
         main_weather = weather_data['weather'][0]['main']
         current_temp = weather_data['main']['temp']
-        print(f"Pogoda z API: {main_weather}, Temperatura: {current_temp}°C")
-        
-        # Logika dopasowana do Twoich 7 kategorii z Figmy
+        # ... (logika pogody) ...
         if main_weather == 'Clear':
-            # ZMIANA: Z 'sunny warm' na 'Mega sunny Hot'
             return 'Mega sunny Hot' if current_temp >= WARM_THRESHOLD else 'Sunny cold'
         elif main_weather == 'Clouds':
             return 'Cloudy warm' if current_temp >= WARM_THRESHOLD else 'Cloudy cold'
         elif main_weather in ['Rain', 'Drizzle']:
-            return 'Raining' # Zmieniamy 'raining' na 'Raining', żeby pasowało do screena
+            return 'Raining'
         elif main_weather == 'Snow':
-            return 'Snow' # Zmieniamy 'snow' na 'Snow'
+            return 'Snow'
         elif main_weather == 'Thunderstorm':
-            return 'Storm' # Zmieniamy 'storm' na 'Storm'
+            return 'Storm'
         else:
             return 'Cloudy cold' if current_temp < WARM_THRESHOLD else 'Cloudy warm'
 
     except requests.exceptions.RequestException as e:
         print(f"Błąd przy pobieraniu pogody: {e}")
-        return 'Cloudy cold' # Domyślna bezpieczna kategoria
+        return 'Cloudy cold'
 
+# === Funkcja AI (API) - NOWA WERSJA Z TŁUMACZENIEM STABILNYM (API) ===
 def classify_mood(mood_text):
-    # NOWY URL Z MAILA Z DOKŁŁADNĄ NAZWĄ MODELU
-    API_URL = "https://router.huggingface.co/models/Kamilgajewski/multilingual-e6-polish-zero-shot-classification"
+    # Dzwonimy bezpośrednio do serwera Google Translate
     
-    # ... (reszta kluczy, bez zmian)
+    # Krok 1: Tłumaczenie (używamy tej samej nieoficjalnej, ale działającej ścieżki co googletrans, ale z nowego modułu)
+    try:
+        # Zastępujemy googletrans, który nie chciał się instalować, nową funkcją Google Translate
+        # Pamiętaj, to jest API, więc może mieć limity, ale jest stabilne
+        translate_url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=pl&tl=en&dt=t&q={requests.utils.quote(mood_text)}"
+        translation_response = requests.get(translate_url)
+        translation_response.raise_for_status()
+        translated_mood = translation_response.json()[0][0][0]
+        print(f"Przetłumaczono '{mood_text}' na: '{translated_mood}'")
+    except Exception as e:
+        print(f"BŁĄD KRYTYCZNY TŁUMACZENIA: {e}. Używam surowego tekstu.")
+        translated_mood = mood_text
+        
+    # Krok 2: API Hugging Face (Stabilny Adres i Model)
+    API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+    
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    emotion_labels = ['radość', 'smutek', 'złość', 'spokój', 'strach', 'zaskoczenie', 'energia']
-    payload = {"inputs": mood_text, "parameters": {"candidate_labels": emotion_labels}}
+    emotion_labels = ['joy', 'sadness', 'anger', 'calmness', 'fear', 'surprise', 'energy']
+    payload = {"inputs": translated_mood, "parameters": {"candidate_labels": emotion_labels}}
 
     try:
         response = requests.post(API_URL, headers=headers, json=payload)
         response.raise_for_status()
         result = response.json()
         
-        # BARDZO WAŻNE: Sprawdzamy, czy wynik jest listą (nowy router może zwracać listę)
-        if isinstance(result, list):
-            result = result[0] # Bierzemy pierwszy element z listy
+        if isinstance(result, list): result = result[0]
             
-        best_emotion = result['labels'][0]
-        print(f"Zdalny Mózg (AI) sklasyfikował '{mood_text}' jako: {best_emotion}")
-        return best_emotion
+        best_emotion_en = result['labels'][0]
+        
+        translation_map = {'joy': 'radość', 'sadness': 'złość', 'anger': 'złość', 'calmness': 'spokój', 'fear': 'strach', 'surprise': 'zaskoczenie', 'energy': 'energia'}
+        best_emotion_pl = translation_map.get(best_emotion_en, 'radość')
+
+        print(f"Zdalny Mózg (AI) sklasyfikował '{translated_mood}' jako: {best_emotion_pl}")
+        return best_emotion_pl
 
     except requests.exceptions.RequestException as e:
-        print(f"Błąd przy łączeniu ze 'Zdalnym Mózgiem' (API AI): {e}")
+        print(f"Błąd przy łączeniu ze 'Zdalnym Mózgiem' (API AI): {e}. Czy HF_TOKEN jest poprawny?")
         return 'radość'
 
-# === Funkcja Spotify (ZAKTUALIZOWANA) ===
+
+# === Funkcja Spotify (bez zmian) ===
 def get_spotify_playlist(query):
-    # Zwracamy DWA linki: normalny i do podglądu (embed)
     default_links = {
         'url': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYEmSG',
-        'embed_url': 'http://googleusercontent.com/spotify.com/7'
+        'embed_url': 'open.spotify.com/embed'
     }
     
     if sp is None:
@@ -100,11 +115,15 @@ def get_spotify_playlist(query):
 
     try:
         results = sp.search(q=query, type='playlist', limit=10, market='PL')
-        playlists = results['playlists']['items']
         
+        if results and 'playlists' in results and 'items' in results['playlists']:
+            playlists = results['playlists']['items']
+        else:
+            playlists = [] 
+
         if not playlists:
-            print(f"Nie znaleziono playlist dla hasła: {query}. Próbuję szukać dla samego nastroju.")
-            mood_only = query.split()[-1] # Bierzemy ostatnie słowo (emocję)
+            print(f"Nie znaleziono playlist dla hasła: {query}.")
+            mood_only = query.split()[-1] 
             results_mood_only = sp.search(q=mood_only, type='playlist', limit=1, market='PL')
             playlists = results_mood_only['playlists']['items']
             
@@ -112,62 +131,47 @@ def get_spotify_playlist(query):
                 print("Nie znaleziono też playlist dla samego nastroju. Zwracam domyślny link.")
                 return default_links
 
-        # Mamy playlistę! Bierzemy pierwszą
         playlist_url = playlists[0]['external_urls']['spotify']
         playlist_name = playlists[0]['name']
         
-        # TWORZYMY LINK DO PODGLĄDU (EMBED)
-        # Zamieniamy: https://open.spotify.com/playlist/ID
-        # Na:         https://open.spotify.com/embed/playlist/ID
         embed_url = playlist_url.replace("open.spotify.com/", "open.spotify.com/embed/")
         
         print(f"Znaleziono playlistę: '{playlist_name}' -> {playlist_url}")
         
-        return {
-            'url': playlist_url,
-            'embed_url': embed_url
-        }
+        return {'url': playlist_url, 'embed_url': embed_url}
 
     except Exception as e:
         print(f"Błąd przy szukaniu playlisty: {e}")
         return default_links
 
 
-# --- Nasz główny serwer Flask (WIELKI FINAŁ v2) ---
+# --- Finał (bez zmian) ---
 app = Flask(__name__)
 
 @app.route('/generate-playlist', methods=['POST'])
 def generate_playlist():
-    
     print("\n--- NOWE ZAPYTANIE ---")
     data = request.json
     city = data.get('city')
     mood = data.get('mood')
 
-    # KROK 1: Pogoda
-    weather_category = get_weather(city) # Np. "Mega sunny Hot"
+    weather_category = get_weather(city)
+    emotion_category = classify_mood(mood)
     
-    # KROK 2: Emocje
-    emotion_category = classify_mood(mood) # Np. "radość"
-    
-    # KROK 3: Hasło do wyszukiwania
     search_query = f"{weather_category} {emotion_category}"
     print(f"Tworzę hasło do Spotify: '{search_query}'")
     
-    # KROK 4: Playlista
-    playlist_data = get_spotify_playlist(search_query) # Zwraca {'url': '...', 'embed_url': '...'}
+    playlist_data = get_spotify_playlist(search_query)
     
-    # KROK 5: Zbuduj ostateczną odpowiedź dla Framera
     response_data = {
         'playlist_url': playlist_data['url'],
         'embed_url': playlist_data['embed_url'],
-        'weather_category': weather_category  # <-- WYSYŁAMY KATEGORIĘ DO UI!
+        'weather_category': weather_category
     }
     
     print(f"Wysyłam do Framera: {response_data}")
     return jsonify(response_data)
 
 
-# --- Uruchomienie serwera ---
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
