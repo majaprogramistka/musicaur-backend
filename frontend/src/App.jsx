@@ -37,7 +37,7 @@ function App() {
         alignItems: "center",
         justifyContent: "center",
         background: "linear-gradient(135deg, #c39aff, #7c4dff)",
-        padding: "2rem",
+        padding: "3rem",
         fontFamily: "Arial, sans-serif",
       }}
     >
@@ -47,7 +47,7 @@ function App() {
           display: "flex",
           flexDirection: "column",
           gap: "1rem",
-          width: "90%",
+          width: "100%",
           maxWidth: "400px",
           background: "rgba(255, 255, 255, 0.15)",
           backdropFilter: "blur(10px)",
@@ -67,7 +67,7 @@ function App() {
             border: "none",
             outline: "none",
             fontSize: "1rem",
-            background: "rgba(255,255,255,0.3)",
+            background: "#dcc3f7ff",
             color: "#fff",
             fontWeight: "bold",
             textAlign: "center",
@@ -84,7 +84,7 @@ function App() {
             border: "none",
             outline: "none",
             fontSize: "1rem",
-            background: "rgba(255,255,255,0.3)",
+            background: "#dcc3f7ff",
             color: "#fff",
             fontWeight: "bold",
             textAlign: "center",
@@ -99,7 +99,7 @@ function App() {
             backgroundColor: "rgba(255,255,255,0.4)",
             fontWeight: "bold",
             cursor: "pointer",
-            color: "#7c4dff",
+            color: "#503a8dff",
             transition: "0.3s",
           }}
         >
