@@ -62,7 +62,7 @@ def get_weather(city):
 
 def classify_mood(mood_text):
     # NOWY URL Z MAILA Z DOKŁŁADNĄ NAZWĄ MODELU
-    API_URL = "https://router.huggingface.co/hf-inference/models/Kamilgajewski/multilingual-e6-polish-zero-shot-classification"
+    API_URL = "https://router.huggingface.co/models/Kamilgajewski/multilingual-e6-polish-zero-shot-classification"
     
     # ... (reszta kluczy, bez zmian)
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
