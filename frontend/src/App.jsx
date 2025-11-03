@@ -14,7 +14,7 @@ function App() {
     setEmbedUrl(""); 
 
     try {
-      const res = await fetch("https://musicaur.onrender.com", {
+      const res = await fetch("https://musicaur.onrender.com/generate-playlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ city, mood }),
